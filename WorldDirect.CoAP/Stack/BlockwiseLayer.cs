@@ -119,7 +119,7 @@ namespace WorldDirect.CoAP.Stack
                         Response error = Response.CreateResponse(request, StatusCode.RequestEntityIncomplete);
                         error.AddOption(new BlockOption(OptionType.Block1, block1.NUM, block1.SZX, block1.M));
                         error.SetPayload("Changed Content-Format");
-                        
+
                         exchange.CurrentResponse = error;
                         base.SendResponse(nextLayer, exchange, error);
                         return;
@@ -227,7 +227,7 @@ namespace WorldDirect.CoAP.Stack
                 BlockwiseStatus status = FindResponseBlockStatus(exchange, response);
 
                 Response block = GetNextResponseBlock(response, status);
-                
+
                 if (block1 != null) // in case we still have to ack the last block1
                     block.SetOption(block1);
                 if (block.Token == null)
@@ -513,7 +513,8 @@ namespace WorldDirect.CoAP.Stack
 
             Boolean m = to < request.PayloadSize;
             block.AddOption(new BlockOption(OptionType.Block1, num, szx, m));
-
+            block.MaxRetransmit = request.MaxRetransmit;
+            block.TimedOut += (s, a) => request.IsTimedOut = true;
             status.Complete = !m;
             return block;
         }

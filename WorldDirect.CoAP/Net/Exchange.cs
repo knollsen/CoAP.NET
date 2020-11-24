@@ -166,9 +166,7 @@ namespace WorldDirect.CoAP.Net
                 _complete = value;
                 if (value)
                 {
-                    EventHandler h = Completed;
-                    if (h != null)
-                        h(this, EventArgs.Empty);
+                    Completed?.Invoke(this, EventArgs.Empty);
                 }
             }
         }
