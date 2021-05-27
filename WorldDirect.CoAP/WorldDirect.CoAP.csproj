@@ -2,15 +2,17 @@
 
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
-    <Version>0.5.1</Version>
+    <Version>0.5.4</Version>
     <Company>World-Direct eBusiness solutions GmbH</Company>
     <Copyright>2020</Copyright>
     <PackageLicenseFile>LICENSE</PackageLicenseFile>
     <PackageIcon>packageIcon.png</PackageIcon>
     <RepositoryUrl>https://github.com/world-direct/CoAP.NET</RepositoryUrl>
     <Description>Changelog:
-        v0.5.1: Bugfix request timeout blockwise
-    </Description>
+        v0.5.4: Disabled logging
+        v0.5.3: ?
+        v0.5.2: Bugfix Logmanager
+        v0.5.1: Bugfix request timeout blockwise</Description>
   </PropertyGroup>
   <PropertyGroup>
     <IncludeSymbols>true</IncludeSymbols>
