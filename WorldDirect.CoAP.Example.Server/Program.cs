@@ -40,7 +40,7 @@ namespace WorldDirect.CoAP.Example.Server
         protected override void DoPut(CoapExchange exchange)
         {
             Console.WriteLine("Received");
-            exchange.Accept();
+            exchange.Respond(StatusCode.Created);
         }
     }
 }

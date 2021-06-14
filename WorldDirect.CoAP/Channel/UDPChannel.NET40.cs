@@ -9,12 +9,15 @@
  * Please see README for more information.
  */
 
-namespace WorldDirect.CoAP.Channel {
+namespace WorldDirect.CoAP.Channel
+{
     using System;
     using System.Net;
     using System.Net.Sockets;
+    using System.Transactions;
 
-    public partial class UDPChannel {
+    public partial class UDPChannel
+    {
         private UDPSocket NewUDPSocket(AddressFamily addressFamily, Int32 bufferSize)
         {
             return new UDPSocket(addressFamily, bufferSize, SocketAsyncEventArgs_Completed);
@@ -23,7 +26,7 @@ namespace WorldDirect.CoAP.Channel {
         private void BeginReceive(UDPSocket socket)
         {
             if (_running == 0)
-                return;
+                throw new InvalidOperationException("The socket has not been started.");
 
             if (socket.ReadBuffer.RemoteEndPoint == null)
             {
@@ -34,37 +37,22 @@ namespace WorldDirect.CoAP.Channel {
                         IPAddress.Any : IPAddress.IPv6Any, 0);
             }
 
-            bool willRaiseEvent;
-            try
+            var completedSynchronous = true;
+            while (completedSynchronous)
             {
-                willRaiseEvent = socket.Socket.ReceiveFromAsync(socket.ReadBuffer);
-
-                var e = socket.ReadBuffer?.RemoteEndPoint as IPEndPoint;
-                if (e != null)
+                try
                 {
-                    log.Debug(message: $"Received packet from {e.Address.MapToIPv4()}:{e.Port}. Processing package {(willRaiseEvent ? "asynchronous" : "synchronous")}");
+                    completedSynchronous = !socket.Socket.ReceiveFromAsync(socket.ReadBuffer);
+
+                    if (completedSynchronous)
+                    {
+                        ProcessReceive(socket.ReadBuffer, false);
+                    }
                 }
-
-
-                if (socket.ReadBuffer?.RemoteEndPoint is IPEndPoint ep)
+                catch (Exception e)
                 {
-                    log.Debug(message: $"Received packet from {ep.Address.MapToIPv4()}:{ep.Port}. Processing package {(willRaiseEvent ? "asynchronous" : "synchronous")}");
+                    _socket?.Dispose();
                 }
-            }
-            catch (ObjectDisposedException)
-            {
-                // do nothing
-                return;
-            }
-            catch (Exception ex)
-            {
-                EndReceive(socket, ex);
-                return;
-            }
-
-            if (!willRaiseEvent)
-            {
-                ProcessReceive(socket.ReadBuffer);
             }
         }
 
@@ -73,43 +61,22 @@ namespace WorldDirect.CoAP.Channel {
             socket.SetWriteBuffer(data, 0, data.Length);
             socket.WriteBuffer.RemoteEndPoint = destination;
 
-            bool willRaiseEvent;
-            try
-            {
-                willRaiseEvent = socket.Socket.SendToAsync(socket.WriteBuffer);
+            var completedSynchronous = !socket.Socket.SendToAsync(socket.WriteBuffer);
 
-                if (destination is IPEndPoint ep)
-                {
-                    log.Debug(message: $"Sending packet to {ep.Address.MapToIPv4()}:{ep.Port}. Processing package {(willRaiseEvent ? "asynchronous" : "synchronous")}");
-                }
-            }
-            catch (ObjectDisposedException)
+            if (destination is IPEndPoint ep)
             {
-                // do nothing
-                return;
-            }
-            catch (Exception ex)
-            {
-                EndSend(socket, ex);
-                return;
+                log.Debug(message: $"Sending packet to {ep.Address.MapToIPv4()}:{ep.Port}. Processing package {(completedSynchronous ? "asynchronous" : "synchronous")}");
             }
 
-            if (!willRaiseEvent)
+            if (completedSynchronous)
             {
-                ProcessSend(socket.WriteBuffer);
+                ProcessSend(socket.WriteBuffer, false);
             }
         }
 
-        private void ProcessReceive(SocketAsyncEventArgs e)
+        private void ProcessReceive(SocketAsyncEventArgs e, bool requeue)
         {
             UDPSocket socket = (UDPSocket)e.UserToken;
-
-            var ip = e.RemoteEndPoint as IPEndPoint;
-            if (ip != null)
-            {
-                var addr = ip.Address.MapToIPv4();
-            }
-
 
             if (e.SocketError == SocketError.Success)
             {
@@ -118,21 +85,20 @@ namespace WorldDirect.CoAP.Channel {
             else if (e.SocketError != SocketError.OperationAborted
                 && e.SocketError != SocketError.Interrupted)
             {
-                EndReceive(socket, new SocketException((Int32)e.SocketError));
+                throw new SocketException((Int32)e.SocketError);
+            }
+
+            if (requeue)
+            {
+                this.BeginReceive(socket);
             }
         }
 
-        private void ProcessSend(SocketAsyncEventArgs e)
+        private void ProcessSend(SocketAsyncEventArgs e, bool requeue)
         {
-            UDPSocket socket = (UDPSocket)e.UserToken;
-
-            if (e.SocketError == SocketError.Success)
+            if (requeue)
             {
-                EndSend(socket, e.BytesTransferred);
-            }
-            else
-            {
-                EndSend(socket, new SocketException((Int32)e.SocketError));
+                this.BeginSend();
             }
         }
 
@@ -141,15 +107,16 @@ namespace WorldDirect.CoAP.Channel {
             switch (e.LastOperation)
             {
                 case SocketAsyncOperation.ReceiveFrom:
-                    ProcessReceive(e);
+                    ProcessReceive(e, true);
                     break;
                 case SocketAsyncOperation.SendTo:
-                    ProcessSend(e);
+                    ProcessSend(e, true);
                     break;
             }
         }
 
-        partial class UDPSocket {
+        partial class UDPSocket
+        {
             public readonly SocketAsyncEventArgs ReadBuffer;
             public readonly SocketAsyncEventArgs WriteBuffer;
             readonly Byte[] _writeBuffer;

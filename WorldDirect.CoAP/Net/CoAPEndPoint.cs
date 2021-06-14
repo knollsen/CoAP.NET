@@ -12,6 +12,7 @@
 namespace WorldDirect.CoAP.Net
 {
     using System;
+    using System.Threading;
     using Channel;
     using Codec;
     using Log;
