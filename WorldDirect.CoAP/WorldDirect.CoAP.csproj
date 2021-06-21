@@ -2,18 +2,19 @@
 
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
-    <Version>0.5.3</Version>
+    <Version>0.5.6-alpha1</Version>
     <Company>World-Direct eBusiness solutions GmbH</Company>
-    <Copyright>2020</Copyright>
+    <Copyright>2021</Copyright>
     <PackageLicenseFile>LICENSE</PackageLicenseFile>
     <PackageIcon>packageIcon.png</PackageIcon>
     <RepositoryUrl>https://github.com/world-direct/CoAP.NET</RepositoryUrl>
-    <Description>
-        Changelog:
-        v0.5.1: Bugfix request timeout blockwise
+    <Description>Changelog:
+        v0.5.6: Add progress reporting on long running Put
+        v0.5.5: Bugfix Stackoverflow
+        v0.5.4: Disabled logging
+        v0.5.3: ?
         v0.5.2: Bugfix Logmanager
-        v0.5.3: Added optional progress report on PutAsync
-    </Description>
+        v0.5.1: Bugfix request timeout blockwise</Description>
   </PropertyGroup>
   <PropertyGroup>
     <IncludeSymbols>true</IncludeSymbols>

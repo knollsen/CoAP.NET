@@ -15,6 +15,7 @@ namespace WorldDirect.CoAP.Channel
     using System.Collections.Concurrent;
     using System.Net;
     using System.Net.Sockets;
+    using System.Threading;
     using Log;
 
     /// <summary>
@@ -37,7 +38,8 @@ namespace WorldDirect.CoAP.Channel
         private UDPSocket _socket;
         private UDPSocket _socketBackup;
         private Int32 _running;
-        private Int32 _writing;
+        private readonly object sendLock;
+        private bool _writing;
         private readonly ConcurrentQueue<RawData> _sendingQueue = new ConcurrentQueue<RawData>();
 
         /// <inheritdoc/>
@@ -46,9 +48,9 @@ namespace WorldDirect.CoAP.Channel
         /// <summary>
         /// Initializes a UDP channel with a random port.
         /// </summary>
-        public UDPChannel() 
+        public UDPChannel()
             : this(0)
-        { 
+        {
         }
 
         /// <summary>
@@ -57,6 +59,7 @@ namespace WorldDirect.CoAP.Channel
         public UDPChannel(Int32 port)
         {
             _port = port;
+            this.sendLock = new object();
         }
 
         /// <summary>
@@ -64,6 +67,7 @@ namespace WorldDirect.CoAP.Channel
         /// </summary>
         public UDPChannel(System.Net.EndPoint localEP)
         {
+            this.sendLock = new object();
             _localEP = localEP;
         }
 
@@ -196,10 +200,19 @@ namespace WorldDirect.CoAP.Channel
             RawData raw = new RawData();
             raw.Data = data;
             raw.EndPoint = ep;
-            _sendingQueue.Enqueue(raw);
-            log.Info($"UDP-Enqueued {ep.Serialize()}({data?.Length})");
-            if (System.Threading.Interlocked.CompareExchange(ref _writing, 1, 0) > 0)
-                return;
+
+            lock (this.sendLock)
+            {
+                _sendingQueue.Enqueue(raw);
+
+                if (this._writing)
+                {
+                    return;
+                }
+
+                this._writing = true;
+            }
+
             BeginSend();
         }
 
@@ -211,13 +224,15 @@ namespace WorldDirect.CoAP.Channel
 
         private void BeginReceive()
         {
-            if (_running > 0)
+            if (_running <= 0)
             {
-                BeginReceive(_socket);
-
-                if (_socketBackup != null)
-                    BeginReceive(_socketBackup);
+                return;
             }
+
+            BeginReceive(_socket);
+
+            if (_socketBackup != null)
+                BeginReceive(_socketBackup);
         }
 
         private void EndReceive(UDPSocket socket, Byte[] buffer, Int32 offset, Int32 count, System.Net.EndPoint ep)
@@ -234,27 +249,18 @@ namespace WorldDirect.CoAP.Channel
                         ep = new IPEndPoint(IPAddressExtensions.MapToIPv4(ipep.Address), ipep.Port);
                 }
 
-                try {
+                try
+                {
                     DateTimeOffset start = DateTimeOffset.Now;
                     log.Info($"UDP-FireDataReceived START");
                     FireDataReceived(bytes, ep);
                     log.Info($"UDP-FireDataReceived END ({DateTimeOffset.Now - start})");
                 }
-                catch(Exception e) {
+                catch (Exception e)
+                {
                     log.Error($"FireDataReceived error occurred: {e.ToString()}", e);
                 }
             }
-
-            BeginReceive(socket);
-        }
-
-        private void EndReceive(UDPSocket socket, Exception ex)
-        {
-            // TODO may log exception?
-
-            log.Error(nameof(EndReceive), ex);
-
-            BeginReceive(socket);
         }
 
         private void FireDataReceived(Byte[] data, System.Net.EndPoint ep)
@@ -269,42 +275,43 @@ namespace WorldDirect.CoAP.Channel
             if (_running == 0)
                 return;
 
-            RawData raw;
-            if (!_sendingQueue.TryDequeue(out raw))
+            bool messageDequeued;
+            do
             {
-                System.Threading.Interlocked.Exchange(ref _writing, 0);
-                return;
-            }
+                messageDequeued = this._sendingQueue.TryDequeue(out var raw);
 
-            UDPSocket socket = _socket;
-            IPEndPoint remoteEP = (IPEndPoint)raw.EndPoint;
-
-            if (remoteEP.AddressFamily == AddressFamily.InterNetwork)
-            {
-                if (_socketBackup != null)
+                if (!messageDequeued)
                 {
-                    // use the separated socket of IPv4 to deal with IPv4 conversions.
-                    socket = _socketBackup;
+                    lock (this.sendLock)
+                    {
+                        messageDequeued = this._sendingQueue.TryDequeue(out raw);
+                        if (!messageDequeued)
+                        {
+                            this._writing = false;
+                            continue;
+                        }
+                    }
                 }
-                else if (_socket.Socket.AddressFamily == AddressFamily.InterNetworkV6)
+
+                var socket = _socket;
+                var remoteEndPoint = (IPEndPoint)(raw).EndPoint;
+
+                if (remoteEndPoint.AddressFamily == AddressFamily.InterNetwork)
                 {
-                    remoteEP = new IPEndPoint(IPAddressExtensions.MapToIPv6(remoteEP.Address), remoteEP.Port);
+                    if (_socketBackup != null)
+                    {
+                        // use the separated socket of IPv4 to deal with IPv4 conversions.
+                        socket = _socketBackup;
+                    }
+                    else if (_socket.Socket.AddressFamily == AddressFamily.InterNetworkV6)
+                    {
+                        remoteEndPoint = new IPEndPoint(IPAddressExtensions.MapToIPv6(remoteEndPoint.Address), remoteEndPoint.Port);
+                    }
                 }
-            }
 
-            BeginSend(socket, raw.Data, remoteEP);
-        }
+                BeginSend(socket, raw.Data, remoteEndPoint);
 
-        private void EndSend(UDPSocket socket, Int32 bytesTransferred)
-        {
-            BeginSend();
-        }
-
-        private void EndSend(UDPSocket socket, Exception ex)
-        {
-            // TODO may log exception?
-            log.Error(nameof(EndSend), ex);
-            BeginSend();
+            } while (messageDequeued);
         }
 
         private UDPSocket SetupUDPSocket(AddressFamily addressFamily, Int32 bufferSize)

@@ -3,7 +3,6 @@
 namespace WorldDirect.CoAP.Example.Client
 {
     using System.IO;
-    using System.Net.Cache;
     using System.Threading;
     using System.Threading.Tasks;
 
@@ -13,14 +12,23 @@ namespace WorldDirect.CoAP.Example.Client
         {
             NLog.LogManager.GetCurrentClassLogger().Debug("Hello");
 
-            try
+            await Task.Delay(5000).ConfigureAwait(false);
+
+            //await DoPut().ConfigureAwait(false);
+
+            while (true)
             {
-                await DoPut();
+                try
+                {
+                    //await DoPut().ConfigureAwait(false);
+                    await DoGet().ConfigureAwait(false);
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine(e);
+                }
             }
-            catch (Exception e)
-            {
-                Console.WriteLine(e);
-            }
+
             Console.ReadLine();
         }
 
@@ -31,11 +39,12 @@ namespace WorldDirect.CoAP.Example.Client
             req.URI = new Uri("coap://localhost");
             req.TimedOut += (sender, args) =>
             {
-                Console.WriteLine("Timeout");
+                Console.WriteLine("Get Timeout");
             };
 
             var client = new CoapClient();
-            await client.SendAsync(req, CancellationToken.None);
+            var response = await client.SendAsync(req, CancellationToken.None);
+            Console.WriteLine($"Get completed: {response.ResponseText}");
         }
 
         private static async Task DoPut()
@@ -45,7 +54,7 @@ namespace WorldDirect.CoAP.Example.Client
 
             req.TimedOut += (sender, eventArgs) =>
             {
-                Console.WriteLine("Timeout");
+                Console.WriteLine("PUT Timeout");
             };
 
             req.MaxRetransmit = 2;
@@ -53,8 +62,8 @@ namespace WorldDirect.CoAP.Example.Client
             var payload = File.ReadAllBytes("C:\\dev\\src\\spikes\\FirmwareDeployer\\FirmwareDeployer\\bin\\Debug\\netcoreapp3.1\\aligned.bin");
             req.SetPayload(payload, MediaType.ApplicationOctetStream);
 
-
             var rsp = await client.SendAsync(req, CancellationToken.None).ConfigureAwait(false);
+            Console.WriteLine($"PUT completed: {rsp.StatusCode}");
         }
     }
 }

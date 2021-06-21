@@ -33,10 +33,7 @@ namespace WorldDirect.CoAP.Log
                 test = null;
             }
 
-            _manager = new ConsoleLogManager();
-            //if (test == null)
-            //else
-            //    _manager = new CommonLoggingManager();
+            _manager = NopLogManager.Instance;
         }
 
         /// <summary>
